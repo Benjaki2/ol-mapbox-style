@@ -4,6 +4,7 @@ Copyright 2016-present ol-mapbox-style contributors
 License: https://raw.githubusercontent.com/openlayers/ol-mapbox-style/master/LICENSE
 */
 
+import * as olExtent from 'ol/extent';
 import Style from 'ol/style/Style';
 import Fill from 'ol/style/Fill';
 import Stroke from 'ol/style/Stroke';
@@ -11,7 +12,7 @@ import Icon from 'ol/style/Icon';
 import Text from 'ol/style/Text';
 import Circle from 'ol/style/Circle';
 import RenderFeature from 'ol/render/Feature';
-import {derefLayers} from '@mapbox/mapbox-gl-style-spec';
+import { derefLayers } from '@mapbox/mapbox-gl-style-spec';
 
 import {
   expression, Color,
@@ -20,7 +21,7 @@ import {
   featureFilter as createFilter
 } from '@mapbox/mapbox-gl-style-spec';
 import mb2css from 'mapbox-to-css-font';
-import {deg2rad, defaultResolutions, getZoomForResolution, wrapText, applyLetterSpacing, createCanvas} from './util';
+import { deg2rad, defaultResolutions, getZoomForResolution, wrapText, applyLetterSpacing, createCanvas } from './util';
 
 /**
  * @typedef {import("ol/layer/Vector").default} VectorLayer
@@ -53,7 +54,7 @@ const anchor = {
   'bottom-right': [1, 1]
 };
 
-const expressionData = function(rawExpression, propertySpec) {
+const expressionData = function (rawExpression, propertySpec) {
   const compiledExpression = createPropertyExpression(rawExpression, propertySpec);
   if (compiledExpression.result === 'error') {
     throw new Error(compiledExpression.value.map(err => `${err.key}: ${err.message}`).join(', '));
@@ -62,7 +63,7 @@ const expressionData = function(rawExpression, propertySpec) {
 };
 
 const emptyObj = {};
-const zoomObj = {zoom: 0};
+const zoomObj = { zoom: 0 };
 /** @private */
 const functionCache = {};
 let renderFeatureCoordinates, renderFeature;
@@ -100,7 +101,7 @@ export function getValue(layer, layoutOrPaint, property, zoom, feature) {
       if (propertySpec.type == 'color') {
         value = Color.parse(value);
       }
-      functions[property] = function() {
+      functions[property] = function () {
         return value;
       };
     }
@@ -253,7 +254,7 @@ export function recordStyleLayer(record) {
  * @return {StyleFunction} Style function for use in
  * `ol.layer.Vector` or `ol.layer.VectorTile`.
  */
-export default function(olLayer, glStyle, source, resolutions = defaultResolutions, spriteData, spriteImageUrl, getFonts) {
+export default function (olLayer, glStyle, source, olMap, resolutions = defaultResolutions, spriteData, spriteImageUrl, getFonts) {
   if (typeof glStyle == 'string') {
     glStyle = JSON.parse(glStyle);
   }
@@ -266,7 +267,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
     if (typeof Image !== 'undefined') {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = function() {
+      img.onload = function () {
         spriteImage = img;
         spriteImgSize = [img.width, img.height];
         olLayer.changed();
@@ -299,7 +300,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
     const layer = allLayers[i];
     const layerId = layer.id;
     if (typeof source == 'string' && layer.source == source ||
-        source.indexOf(layerId) !== -1) {
+      source.indexOf(layerId) !== -1) {
       const sourceLayer = layer['source-layer'];
       if (!mapboxSource) {
         mapboxSource = layer.source;
@@ -334,7 +335,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
   const patternCache = {};
   const styles = [];
 
-  const styleFunction = function(feature, resolution) {
+  const styleFunction = function (feature, resolution) {
     const properties = feature.getProperties();
     const layers = layersBySourceLayer[properties.layer];
     if (!layers) {
@@ -359,7 +360,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
       const layout = layer.layout || emptyObj;
       const paint = layer.paint || emptyObj;
       if (layout.visibility === 'none' || ('minzoom' in layer && zoom < layer.minzoom) ||
-          ('maxzoom' in layer && zoom >= layer.maxzoom)) {
+        ('maxzoom' in layer && zoom >= layer.maxzoom)) {
         continue;
       }
       const filter = layer.filter;
@@ -455,7 +456,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
             stroke.setColor(color);
             stroke.setWidth(width);
             stroke.setLineDash(paint['line-dasharray'] ?
-              getValue(layer, 'paint', 'line-dasharray', zoom, f).map(function(x) {
+              getValue(layer, 'paint', 'line-dasharray', zoom, f).map(function (x) {
                 return x * width;
               }) : null);
             style.setZIndex(index);
@@ -508,7 +509,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
                         const maxX = Math.max(x1, x2);
                         const maxY = Math.max(y1, y2);
                         if (midpoint[0] >= minX && midpoint[0] <= maxX &&
-                            midpoint[1] >= minY && midpoint[1] <= maxY) {
+                          midpoint[1] >= minY && midpoint[1] <= maxY) {
                           placementAngle = Math.atan2(y1 - y2, x2 - x1);
                           break;
                         }
@@ -667,22 +668,67 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
           text.setFont(font);
           text.setRotation(deg2rad(getValue(layer, 'layout', 'text-rotate', zoom, f)));
           const textAnchor = getValue(layer, 'layout', 'text-anchor', zoom, f);
+          const textVariableAnchor = getValue(layer, 'layout', 'text-variable-anchor', zoom, f);
+          const textRadialOffset = getValue(layer, 'layout', 'text-radial-offset', zoom, f);
+
           const placement = (hasImage || type == 1) ? 'point' : getValue(layer, 'layout', 'symbol-placement', zoom, f);
           text.setPlacement(placement);
           let textHaloWidth = getValue(layer, 'paint', 'text-halo-width', zoom, f);
+
           const textOffset = getValue(layer, 'layout', 'text-offset', zoom, f);
           const textTranslate = getValue(layer, 'paint', 'text-translate', zoom, f);
+          let textAlign = 'center';
+          let textBaseline = 'middle';
           // Text offset has to take halo width and line height into account
           let vOffset = 0;
           let hOffset = 0;
           if (placement == 'point') {
-            let textAlign = 'center';
-            if (textAnchor.indexOf('left') !== -1) {
-              textAlign = 'left';
-              hOffset = textHaloWidth;
-            } else if (textAnchor.indexOf('right') !== -1) {
-              textAlign = 'right';
-              hOffset = -textHaloWidth;
+            if (textVariableAnchor || textAnchor) {
+              const layerExtent = olLayer.getSource().tileGrid.getExtent();
+              const pointPixel = olMap.getPixelFromCoordinate(feature.getFlatCoordinates());
+              let pass = false;
+              for (let i = 0, len = textVariableAnchor.length; i < len; i++) {
+                if (pass) {
+                  break;
+                }
+                switch (textVariableAnchor[i]) {
+                  case 'left':
+                    textAlign = 'left';
+                    hOffset = textHaloWidth;
+                    textOffset[0] = textRadialOffset ? -textRadialOffset : textOffset ? textOffset[0] : 0;
+                    pointPixel[0] = pointPixel[0] + (textOffset[0] * textSize + hOffset + textTranslate[0]);
+                    break;
+                  case 'right':
+                    textAlign = 'right';
+                    hOffset = -textHaloWidth;
+                    textOffset[0] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[0] : 0;
+                    pointPixel[0] = pointPixel[0] - (textOffset[0] * textSize + hOffset + textTranslate[0]);
+                    break;
+                  case 'top':
+                    textBaseline = 'top';
+                    vOffset = textHaloWidth + (0.5 * (textLineHeight - 1)) * textSize;
+                    textOffset[1] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[1] : 0;
+
+                    pointPixel[1] = pointPixel[1] + textOffset[1] * textSize + vOffset + textTranslate[1];
+                    break;
+                  case 'bottom':
+                    textBaseline = 'bottom';
+                    vOffset = -textHaloWidth - (0.5 * (textLineHeight - 1)) * textSize;
+                    textOffset[1] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[1] : 0;
+                    pointPixel[1] = pointPixel[1] + textOffset[1] * textSize + vOffset + textTranslate[1];
+                    break;
+                  default:
+                    textAlign = 'right';
+                    textOffset[0] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[0] : 0;
+                    hOffset = textHaloWidth;
+                }
+                if (olExtent.containsCoordinate(layerExtent, olMap.getCoordinateFromPixel(pointPixel))) {
+                  pass = true;
+                  break;
+                }
+              }
+
+              text.setTextAlign(textAlign);
             }
             text.setTextAlign(textAlign);
             const textRotationAlignment = getValue(layer, 'layout', 'text-rotation-alignment', zoom, f);
@@ -691,14 +737,6 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
             text.setMaxAngle(deg2rad(getValue(layer, 'layout', 'text-max-angle', zoom, f)) * label.length / wrappedLabel.length);
             text.setTextAlign();
             text.setRotateWithView(false);
-          }
-          let textBaseline = 'middle';
-          if (textAnchor.indexOf('bottom') == 0) {
-            textBaseline = 'bottom';
-            vOffset = -textHaloWidth - (0.5 * (textLineHeight - 1)) * textSize;
-          } else if (textAnchor.indexOf('top') == 0) {
-            textBaseline = 'top';
-            vOffset = textHaloWidth + (0.5 * (textLineHeight - 1)) * textSize;
           }
           text.setTextBaseline(textBaseline);
           text.setOffsetX(textOffset[0] * textSize + hOffset + textTranslate[0]);
