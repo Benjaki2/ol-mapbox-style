@@ -4,6 +4,7 @@ Copyright 2016-present ol-mapbox-style contributors
 License: https://raw.githubusercontent.com/openlayers/ol-mapbox-style/master/LICENSE
 */
 
+import * as olExtent from 'ol/extent';
 import Style from 'ol/style/Style';
 import Fill from 'ol/style/Fill';
 import Stroke from 'ol/style/Stroke';
@@ -172,7 +173,7 @@ function fromTemplate(text, properties) {
  * @return {ol.style.StyleFunction} Style function for use in
  * `ol.layer.Vector` or `ol.layer.VectorTile`.
  */
-export default function(olLayer, glStyle, source, resolutions = defaultResolutions, spriteData, spriteImageUrl, getFonts) {
+export default function(olLayer, glStyle, source, olMap, resolutions = defaultResolutions, spriteData, spriteImageUrl, getFonts) {
   if (typeof glStyle == 'string') {
     glStyle = JSON.parse(glStyle);
   }
@@ -555,35 +556,71 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
           text.setFont(font);
           text.setRotation(deg2rad(getValue(layer, 'layout', 'text-rotate', zoom, f)));
           const textAnchor = getValue(layer, 'layout', 'text-anchor', zoom, f);
+          const textVariableAnchor = getValue(layer, 'layout', 'text-variable-anchor', zoom, f);
+          const textRadialOffset = getValue(layer, 'layout', 'text-radial-offset', zoom, f);
+
           const placement = (hasImage || type == 1) ? 'point' : getValue(layer, 'layout', 'symbol-placement', zoom, f);
           text.setPlacement(placement);
           let textHaloWidth = getValue(layer, 'paint', 'text-halo-width', zoom, f);
+
           const textOffset = getValue(layer, 'layout', 'text-offset', zoom, f);
           const textTranslate = getValue(layer, 'paint', 'text-translate', zoom, f);
+          let textAlign = 'center';
+          let textBaseline = 'middle';
           // Text offset has to take halo width and line height into account
           let vOffset = 0;
           let hOffset = 0;
           if (placement == 'point') {
-            let textAlign = 'center';
-            if (textAnchor.indexOf('left') !== -1) {
-              textAlign = 'left';
-              hOffset = textHaloWidth;
-            } else if (textAnchor.indexOf('right') !== -1) {
-              textAlign = 'right';
-              hOffset = -textHaloWidth;
+            if (textVariableAnchor || textAnchor) {
+              const layerExtent = olLayer.getSource().tileGrid.getExtent();
+              const pointPixel = olMap.getPixelFromCoordinate(feature.getFlatCoordinates());
+              let pass = false;
+              for (let i = 0, len = textVariableAnchor.length; i < len; i++) {
+                if (pass) {
+                  break;
+                }
+                switch (textVariableAnchor[i]) {
+                  case 'left':
+                    textAlign = 'left';
+                    hOffset = textHaloWidth;
+                    textOffset[0] = textRadialOffset ? -textRadialOffset : textOffset ? textOffset[0] : 0;
+                    pointPixel[0] = pointPixel[0] + (textOffset[0] * textSize + hOffset + textTranslate[0]);
+                    break;
+                  case 'right':
+                    textAlign = 'right';
+                    hOffset = -textHaloWidth;
+                    textOffset[0] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[0] : 0;
+                    pointPixel[0] = pointPixel[0] - (textOffset[0] * textSize + hOffset + textTranslate[0]);
+                    break;
+                  case 'top':
+                    textBaseline = 'top';
+                    vOffset = textHaloWidth + (0.5 * (textLineHeight - 1)) * textSize;
+                    textOffset[1] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[1] : 0;
+
+                    pointPixel[1] = pointPixel[1] + textOffset[1] * textSize + vOffset + textTranslate[1];
+                    break;
+                  case 'bottom':
+                    textBaseline = 'bottom';
+                    vOffset = -textHaloWidth - (0.5 * (textLineHeight - 1)) * textSize;
+                    textOffset[1] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[1] : 0;
+                    pointPixel[1] = pointPixel[1] + textOffset[1] * textSize + vOffset + textTranslate[1];
+                    break;
+                  default:
+                    textAlign = 'right';
+                    textOffset[0] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[0] : 0;
+                    hOffset = textHaloWidth;
+                }
+                if (olExtent.containsCoordinate(layerExtent, olMap.getCoordinateFromPixel(pointPixel))) {
+                  pass = true;
+                  break;
+                }
+              }
+
+              text.setTextAlign(textAlign);
             }
-            text.setTextAlign(textAlign);
           } else {
             text.setMaxAngle(deg2rad(getValue(layer, 'layout', 'text-max-angle', zoom, f)));
             text.setTextAlign();
-          }
-          let textBaseline = 'middle';
-          if (textAnchor.indexOf('bottom') == 0) {
-            textBaseline = 'bottom';
-            vOffset = -textHaloWidth - (0.5 * (textLineHeight - 1)) * textSize;
-          } else if (textAnchor.indexOf('top') == 0) {
-            textBaseline = 'top';
-            vOffset = textHaloWidth + (0.5 * (textLineHeight - 1)) * textSize;
           }
           text.setTextBaseline(textBaseline);
           text.setOffsetX(textOffset[0] * textSize + hOffset + textTranslate[0]);
