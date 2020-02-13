@@ -35,7 +35,22 @@ const types = {
   'Polygon': 3,
   'MultiPolygon': 3
 };
-
+const containsCoordinates = function(layerExtent, pixels, olMap) {
+  let bool = true;
+  pixels.forEach(pixel => {
+    if(!olExtent.containsCoordinate(layerExtent, olMap.getCoordinateFromPixel(pixel))) {
+      bool = false;
+      return
+    }
+  });
+  return bool;
+}
+const getTextWidth = function(text, font, canvas) {
+  var context = canvas.getContext('2d');
+  context.font = font;
+  var metrics = context.measureText(text);
+  return metrics.width;
+};
 const expressionData = function(rawExpression, propertySpec) {
   const compiledExpression = createPropertyExpression(rawExpression, propertySpec);
   if (compiledExpression.result === 'error') {
@@ -180,7 +195,7 @@ export default function(olLayer, glStyle, source, olMap, resolutions = defaultRe
   if (glStyle.version != 8) {
     throw new Error('glStyle version 8 required.');
   }
-
+  const canvas = document.createElement('canvas');
   let spriteImage, spriteImgSize;
   if (spriteImageUrl) {
     const img = new Image();
@@ -570,6 +585,10 @@ export default function(olLayer, glStyle, source, olMap, resolutions = defaultRe
           // Text offset has to take halo width and line height into account
           let vOffset = 0;
           let hOffset = 0;
+          let xOffset = 0;
+          let yOffset = 0;
+          let coordinates = [];
+          const textWidth = getTextWidth(wrappedLabel, font, canvas)
           if (placement == 'point') {
             if (textVariableAnchor || textAnchor) {
               const layerExtent = olLayer.getSource().tileGrid.getExtent();
@@ -582,37 +601,50 @@ export default function(olLayer, glStyle, source, olMap, resolutions = defaultRe
                 switch (textVariableAnchor[i]) {
                   case 'left':
                     textAlign = 'left';
-                    hOffset = textHaloWidth;
-                    textOffset[0] = textRadialOffset ? -textRadialOffset : textOffset ? textOffset[0] : 0;
-                    pointPixel[0] = pointPixel[0] + (textOffset[0] * textSize + hOffset + textTranslate[0]);
+                    textBaseline = 'middle';
+                    hOffset = -textHaloWidth;
+                    yOffset = 0;
+                    xOffset = textRadialOffset ? textRadialOffset : textOffset ? textOffset[0] : 0;
+                    pointPixel[0] = pointPixel[0] + xOffset + textWidth + hOffset + textTranslate[0];
+                    coordinates = [pointPixel, [pointPixel[0] - textWidth, pointPixel[1]]];
                     break;
                   case 'right':
                     textAlign = 'right';
-                    hOffset = -textHaloWidth;
-                    textOffset[0] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[0] : 0;
-                    pointPixel[0] = pointPixel[0] - (textOffset[0] * textSize + hOffset + textTranslate[0]);
+                    textBaseline = 'middle';
+                    hOffset = textHaloWidth;
+                    yOffset = 0;
+                    xOffset = textRadialOffset ? -textRadialOffset : textOffset ? textOffset[0] : 0;
+                    pointPixel[0] = pointPixel[0] -( xOffset + textWidth + hOffset + textTranslate[0]);
+                    coordinates = [pointPixel, [pointPixel[0] + textWidth, pointPixel[1]]];
                     break;
                   case 'top':
                     textBaseline = 'top';
                     vOffset = textHaloWidth + (0.5 * (textLineHeight - 1)) * textSize;
-                    textOffset[1] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[1] : 0;
+                    xOffset = 0;
+                    yOffset = textRadialOffset ? textRadialOffset : textOffset ? textOffset[1] : 0;
+                    pointPixel[1] = pointPixel[1] - yOffset - textSize - vOffset;
 
-                    pointPixel[1] = pointPixel[1] + textOffset[1] * textSize + vOffset + textTranslate[1];
+                    coordinates = [pointPixel, [pointPixel[0] - 0.5 * textWidth, pointPixel[1]], [pointPixel[0] + 0.5 * textWidth, pointPixel[1]]]
                     break;
                   case 'bottom':
                     textBaseline = 'bottom';
                     vOffset = -textHaloWidth - (0.5 * (textLineHeight - 1)) * textSize;
-                    textOffset[1] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[1] : 0;
-                    pointPixel[1] = pointPixel[1] + textOffset[1] * textSize + vOffset + textTranslate[1];
+                    xOffset = 0;
+
+                    yOffset = textRadialOffset ? -textRadialOffset : textOffset ? textOffset[1] : 0;
+                    pointPixel[1] = pointPixel[1] + yOffset + textSize + vOffset;
+                    coordinates = [pointPixel, [pointPixel[0] - (0.5 * textWidth), pointPixel[1]], [pointPixel[0] + 0.5 * textWidth, pointPixel[1]]]
                     break;
                   default:
-                    textAlign = 'right';
-                    textOffset[0] = textRadialOffset ? textRadialOffset : textOffset ? textOffset[0] : 0;
-                    hOffset = textHaloWidth;
+                    textBaseline = 'middle';
+                    textAlign = 'center';
                 }
-                if (olExtent.containsCoordinate(layerExtent, olMap.getCoordinateFromPixel(pointPixel))) {
+
+                if (containsCoordinates(layerExtent, coordinates, olMap)) {
                   pass = true;
                   break;
+                } else if (i == len) {
+                  text.setText('');
                 }
               }
 
@@ -623,8 +655,8 @@ export default function(olLayer, glStyle, source, olMap, resolutions = defaultRe
             text.setTextAlign();
           }
           text.setTextBaseline(textBaseline);
-          text.setOffsetX(textOffset[0] * textSize + hOffset + textTranslate[0]);
-          text.setOffsetY(textOffset[1] * textSize + vOffset + textTranslate[1]);
+          text.setOffsetX(xOffset * textSize + hOffset + textTranslate[0]);
+          text.setOffsetY(yOffset * textSize + vOffset + textTranslate[1]);
           textColor.setColor(colorWithOpacity(getValue(layer, 'paint', 'text-color', zoom, f), opacity));
           text.setFill(textColor);
           const haloColor = colorWithOpacity(getValue(layer, 'paint', 'text-halo-color', zoom, f), opacity);
