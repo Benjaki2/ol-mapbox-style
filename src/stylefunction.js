@@ -11,7 +11,7 @@ import Icon from 'ol/style/Icon';
 import Text from 'ol/style/Text';
 import Circle from 'ol/style/Circle';
 import RenderFeature from 'ol/render/Feature';
-import {derefLayers} from '@mapbox/mapbox-gl-style-spec';
+import { derefLayers } from '@mapbox/mapbox-gl-style-spec';
 
 import {
   expression, Color,
@@ -20,7 +20,8 @@ import {
   featureFilter as createFilter
 } from '@mapbox/mapbox-gl-style-spec';
 import mb2css from 'mapbox-to-css-font';
-import {deg2rad, defaultResolutions, getZoomForResolution, wrapText, applyLetterSpacing, createCanvas} from './util';
+import { deg2rad, defaultResolutions, getZoomForResolution, wrapText, applyLetterSpacing, createCanvas } from './util';
+import RegularShape from 'ol/style/RegularShape';
 
 /**
  * @typedef {import("ol/layer/Vector").default} VectorLayer
@@ -53,7 +54,7 @@ const anchor = {
   'bottom-right': [1, 1]
 };
 
-const expressionData = function(rawExpression, propertySpec) {
+const expressionData = function (rawExpression, propertySpec) {
   const compiledExpression = createPropertyExpression(rawExpression, propertySpec);
   if (compiledExpression.result === 'error') {
     throw new Error(compiledExpression.value.map(err => `${err.key}: ${err.message}`).join(', '));
@@ -62,7 +63,7 @@ const expressionData = function(rawExpression, propertySpec) {
 };
 
 const emptyObj = {};
-const zoomObj = {zoom: 0};
+const zoomObj = { zoom: 0 };
 /** @private */
 const functionCache = {};
 let renderFeatureCoordinates, renderFeature;
@@ -100,7 +101,7 @@ export function getValue(layer, layoutOrPaint, property, zoom, feature) {
       if (propertySpec.type == 'color') {
         value = Color.parse(value);
       }
-      functions[property] = function() {
+      functions[property] = function () {
         return value;
       };
     }
@@ -253,7 +254,7 @@ export function recordStyleLayer(record) {
  * @return {StyleFunction} Style function for use in
  * `ol.layer.Vector` or `ol.layer.VectorTile`.
  */
-export default function(olLayer, glStyle, source, resolutions = defaultResolutions, spriteData, spriteImageUrl, getFonts) {
+export default function (olLayer, glStyle, source, resolutions = defaultResolutions, spriteData, spriteImageUrl, getFonts) {
   if (typeof glStyle == 'string') {
     glStyle = JSON.parse(glStyle);
   }
@@ -266,7 +267,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
     if (typeof Image !== 'undefined') {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = function() {
+      img.onload = function () {
         spriteImage = img;
         spriteImgSize = [img.width, img.height];
         olLayer.changed();
@@ -299,7 +300,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
     const layer = allLayers[i];
     const layerId = layer.id;
     if (typeof source == 'string' && layer.source == source ||
-        source.indexOf(layerId) !== -1) {
+      source.indexOf(layerId) !== -1) {
       const sourceLayer = layer['source-layer'];
       if (!mapboxSource) {
         mapboxSource = layer.source;
@@ -334,7 +335,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
   const patternCache = {};
   const styles = [];
 
-  const styleFunction = function(feature, resolution) {
+  const styleFunction = function (feature, resolution) {
     const properties = feature.getProperties();
     const layers = layersBySourceLayer[properties.layer];
     if (!layers) {
@@ -359,7 +360,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
       const layout = layer.layout || emptyObj;
       const paint = layer.paint || emptyObj;
       if (layout.visibility === 'none' || ('minzoom' in layer && zoom < layer.minzoom) ||
-          ('maxzoom' in layer && zoom >= layer.maxzoom)) {
+        ('maxzoom' in layer && zoom >= layer.maxzoom)) {
         continue;
       }
       const filter = layer.filter;
@@ -455,7 +456,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
             stroke.setColor(color);
             stroke.setWidth(width);
             stroke.setLineDash(paint['line-dasharray'] ?
-              getValue(layer, 'paint', 'line-dasharray', zoom, f).map(function(x) {
+              getValue(layer, 'paint', 'line-dasharray', zoom, f).map(function (x) {
                 return x * width;
               }) : null);
             style.setZIndex(index);
@@ -508,7 +509,7 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
                         const maxX = Math.max(x1, x2);
                         const maxY = Math.max(y1, y2);
                         if (midpoint[0] >= minX && midpoint[0] <= maxX &&
-                            midpoint[1] >= minY && midpoint[1] <= maxY) {
+                          midpoint[1] >= minY && midpoint[1] <= maxY) {
                           placementAngle = Math.atan2(y1 - y2, x2 - x1);
                           break;
                         }
@@ -609,16 +610,28 @@ export default function(olLayer, glStyle, source, resolutions = defaultResolutio
             circleColor + '.' + circleStrokeWidth;
           iconImg = iconImageCache[cache_key];
           if (!iconImg) {
-            iconImg = iconImageCache[cache_key] = new Circle({
-              radius: circleRadius,
-              stroke: circleStrokeColor && circleStrokeWidth > 0 ? new Stroke({
-                width: circleStrokeWidth,
-                color: circleStrokeColor
-              }) : undefined,
-              fill: circleColor ? new Fill({
-                color: circleColor
-              }) : undefined
-            });
+            const stroke = circleStrokeColor && circleStrokeWidth > 0 ? new Stroke({
+              width: circleStrokeWidth,
+              color: circleStrokeColor
+            }) : undefined;
+            const fill = circleColor ? new Fill({
+              color: circleColor
+            }) : undefined;
+            if (layer.square) {
+              iconImg = iconImageCache[cache_key] = new RegularShape({
+                fill,
+                stroke,
+                points: 4,
+                radius: circleRadius,
+                angle: Math.PI / 4,
+              })
+            } else {
+              iconImg = iconImageCache[cache_key] = new Circle({
+                radius: circleRadius,
+                stroke,
+                fill
+              });
+            }
           }
           style.setImage(iconImg);
           text = style.getText();
