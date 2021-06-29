@@ -680,9 +680,15 @@ export default function (olLayer, glStyle, source, olMap, resolutions = defaultR
           const maxTextWidth = getValue(layer, 'layout', 'text-max-width', zoom, f);
           const letterSpacing = getValue(layer, 'layout', 'text-letter-spacing', zoom, f);
           const wrappedLabel = type == 2 ? applyLetterSpacing(label, letterSpacing) : wrapText(label, font, maxTextWidth, letterSpacing);
-          text.setText(wrappedLabel);
+
+          if (!opacity) {
+            text.setText('');
+          } else {
+            text.setText(wrappedLabel);
+          }
           text.setFont(font);
           text.setRotation(deg2rad(getValue(layer, 'layout', 'text-rotate', zoom, f)));
+          
           const textAnchor = getValue(layer, 'layout', 'text-anchor', zoom, f);
           const textVariableAnchor = getValue(layer, 'layout', 'text-variable-anchor', zoom, f);
           const textRadialOffset = getValue(layer, 'layout', 'text-radial-offset', zoom, f);
@@ -701,64 +707,69 @@ export default function (olLayer, glStyle, source, olMap, resolutions = defaultR
           let xOffset = 0;
           let yOffset = 0;
           let coordinates = [];
-          const textWidth = getTextWidth(wrappedLabel, font, canvas)
+          const textWidth = getTextWidth(wrappedLabel, font, canvas);
           if (placement == 'point') {
             if (textVariableAnchor || textAnchor) {
               const layerExtent = olLayer.getSource().tileGrid.getExtent();
               const pointPixel = olMap.getPixelFromCoordinate(feature.getFlatCoordinates());
-              let pass = false;
-              for (let i = 0, len = textVariableAnchor.length; i < len; i++) {
-                if (pass) {
-                  break;
-                }
-                switch (textVariableAnchor[i]) {
-                  case 'left':
-                    textAlign = 'left';
-                    textBaseline = 'middle';
-                    hOffset = -textHaloWidth;
-                    yOffset = 0;
-                    xOffset = textRadialOffset ? textRadialOffset : textOffset ? textOffset[0] : 0;
-                    pointPixel[0] = pointPixel[0] + xOffset + textWidth + hOffset + textTranslate[0];
-                    coordinates = [pointPixel, [pointPixel[0] - textWidth, pointPixel[1]]];
+              if (olExtent.containsCoordinate(layerExtent, feature.getFlatCoordinates())) {
+                let pass = false;
+                const padding = 10;
+                for (let i = 0, len = textVariableAnchor.length; i < len; i++) {
+                  if (pass) {
                     break;
-                  case 'right':
-                    textAlign = 'right';
-                    textBaseline = 'middle';
-                    hOffset = textHaloWidth;
-                    yOffset = 0;
-                    xOffset = textRadialOffset ? -textRadialOffset : textOffset ? textOffset[0] : 0;
-                    pointPixel[0] = pointPixel[0] - (xOffset + textWidth + hOffset + textTranslate[0]);
-                    coordinates = [pointPixel, [pointPixel[0] + textWidth, pointPixel[1]]];
-                    break;
-                  case 'top':
-                    textBaseline = 'top';
-                    vOffset = textHaloWidth + (0.5 * (textLineHeight - 1)) * textSize;
-                    xOffset = 0;
-                    yOffset = textRadialOffset ? textRadialOffset : textOffset ? textOffset[1] : 0;
-                    pointPixel[1] = pointPixel[1] - yOffset - textSize - vOffset;
+                  }
+                  switch (textVariableAnchor[i]) {
+                    case 'left':
+                      textAlign = 'left';
+                      textBaseline = 'middle';
+                      hOffset = -textHaloWidth;
+                      yOffset = 0;
+                      xOffset = textRadialOffset ? textRadialOffset : textOffset ? textOffset[0] : 0;
+                      pointPixel[0] = pointPixel[0] + xOffset + textWidth + hOffset + textTranslate[0] + padding;
+                      coordinates = [pointPixel, [pointPixel[0] - textWidth, pointPixel[1]]];
+                      break;
+                    case 'right':
+                      textAlign = 'right';
+                      textBaseline = 'middle';
+                      hOffset = textHaloWidth;
+                      yOffset = 0;
+                      xOffset = textRadialOffset ? -textRadialOffset : textOffset ? textOffset[0] : 0;
+                      pointPixel[0] = pointPixel[0] - (xOffset + textWidth + hOffset + textTranslate[0] + padding);
+                      coordinates = [pointPixel, [pointPixel[0] + textWidth, pointPixel[1]]];
+                      break;
+                    case 'top':
+                      textBaseline = 'top';
+                      vOffset = textHaloWidth + (0.5 * (textLineHeight - 1)) * textSize;
+                      xOffset = 0;
+                      yOffset = textRadialOffset ? textRadialOffset : textOffset ? textOffset[1] : 0;
+                      pointPixel[1] = pointPixel[1] - yOffset - textSize - vOffset;
 
-                    coordinates = [pointPixel, [pointPixel[0] - 0.5 * textWidth, pointPixel[1]], [pointPixel[0] + 0.5 * textWidth, pointPixel[1]]]
-                    break;
-                  case 'bottom':
-                    textBaseline = 'bottom';
-                    vOffset = -textHaloWidth - (0.5 * (textLineHeight - 1)) * textSize;
-                    xOffset = 0;
+                      coordinates = [pointPixel, [pointPixel[0] - 0.5 * textWidth, pointPixel[1]], [pointPixel[0] + 0.5 * textWidth, pointPixel[1]]]
+                      break;
+                    case 'bottom':
+                      textBaseline = 'bottom';
+                      vOffset = -textHaloWidth - (0.5 * (textLineHeight - 1)) * textSize;
+                      xOffset = 0;
 
-                    yOffset = textRadialOffset ? -textRadialOffset : textOffset ? textOffset[1] : 0;
-                    pointPixel[1] = pointPixel[1] + yOffset + textSize + vOffset;
-                    coordinates = [pointPixel, [pointPixel[0] - (0.5 * textWidth), pointPixel[1]], [pointPixel[0] + 0.5 * textWidth, pointPixel[1]]]
-                    break;
-                  default:
-                    textBaseline = 'middle';
-                    textAlign = 'center';
-                }
+                      yOffset = textRadialOffset ? -textRadialOffset : textOffset ? textOffset[1] : 0;
+                      pointPixel[1] = pointPixel[1] + yOffset + textSize + vOffset;
+                      coordinates = [pointPixel, [pointPixel[0] - (0.5 * textWidth), pointPixel[1]], [pointPixel[0] + 0.5 * textWidth, pointPixel[1]]];
+                      break;
+                    default:
+                      textBaseline = 'middle';
+                      textAlign = 'center';
+                  }
 
-                if (containsCoordinates(layerExtent, coordinates, olMap)) {
-                  pass = true;
-                  break;
-                } else if (i == len) {
-                  text.setText('');
+                  if (containsCoordinates(layerExtent, coordinates, olMap)) {
+                    pass = true;
+                    break;
+                  } else if (i == len) {
+                    text.setText('');
+                  }
                 }
+              } else {
+                text.setText('');
               }
 
               text.setTextAlign(textAlign);
